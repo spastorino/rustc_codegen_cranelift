@@ -9,7 +9,7 @@ use rustc_data_structures::stable_hasher::{HashStable, StableHasher};
 
 use crate::prelude::*;
 
-use crate::backend::{Emit, WriteDebugInfo};
+use crate::backend::{AddConstructor, Emit, WriteDebugInfo};
 
 fn new_module(tcx: TyCtxt<'_>, name: String) -> Module<crate::backend::Backend> {
     let module = crate::backend::make_module(tcx.sess, name);
@@ -33,8 +33,9 @@ fn emit_module<B: Backend>(
     mut module: Module<B>,
     debug: Option<DebugContext<'_>>,
     unwind_context: UnwindContext<'_>,
+    map_product: impl FnOnce(B::Product) -> B::Product,
 ) -> ModuleCodegenResult
-    where B::Product: Emit + WriteDebugInfo,
+    where B::Product: AddConstructor + Emit + WriteDebugInfo,
 {
     module.finalize_definitions();
     let mut product = module.finish();
@@ -44,6 +45,8 @@ fn emit_module<B: Backend>(
     }
 
     unwind_context.emit(&mut product);
+
+    let product = map_product(product);
 
     let tmp_file = tcx
         .output_filenames(LOCAL_CRATE)
@@ -108,7 +111,49 @@ fn module_codegen(tcx: TyCtxt<'_>, cgu_name: rustc_span::Symbol) -> ModuleCodege
     let cgu = tcx.codegen_unit(cgu_name);
     let mono_items = cgu.items_in_deterministic_order(tcx);
 
-    let module = new_module(tcx, cgu_name.as_str().to_string());
+    let mut module = new_module(tcx, cgu_name.as_str().to_string());
+
+    // FIXME implement atomic instructions in Cranelift.
+    let mut init_atomics_mutex_from_constructor = None;
+
+    if tcx.sess.crate_types().contains(&rustc_session::config::CrateType::ProcMacro) {
+        if mono_items.iter().any(|(mono_item, _)| {
+            match mono_item {
+                rustc_middle::mir::mono::MonoItem::Static(def_id) => {
+                    tcx.symbol_name(Instance::mono(tcx, *def_id)).name.as_str().contains("__rustc_proc_macro_decls_")
+                }
+                _ => false,
+            }
+        }) {
+            let sig = Signature::new(CallConv::SystemV);
+            let init_func_id = module
+                .declare_function(&format!("{}_init_atomics_mutex", cgu_name.as_str()), Linkage::Export, &sig)
+                .unwrap();
+
+            init_atomics_mutex_from_constructor = Some(init_func_id);
+
+            let mut ctx = Context::new();
+            ctx.func = Function::with_name_signature(ExternalName::user(0, 0), sig);
+            {
+                let mut func_ctx = FunctionBuilderContext::new();
+                let mut bcx = FunctionBuilder::new(&mut ctx.func, &mut func_ctx);
+
+                let block = bcx.create_block();
+                bcx.switch_to_block(block);
+
+                crate::atomic_shim::init_global_lock(&mut module, &mut bcx);
+
+                bcx.ins().return_(&[]);
+                bcx.seal_all_blocks();
+                bcx.finalize();
+            }
+            module.define_function(
+                init_func_id,
+                &mut ctx,
+                &mut cranelift_codegen::binemit::NullTrapSink {},
+            ).unwrap();
+        }
+    }
 
     let mut cx = crate::CodegenCx::new(tcx, module, tcx.sess.opts.debuginfo != DebugInfo::None);
     super::codegen_mono_items(&mut cx, mono_items);
@@ -122,6 +167,14 @@ fn module_codegen(tcx: TyCtxt<'_>, cgu_name: rustc_span::Symbol) -> ModuleCodege
         module,
         debug,
         unwind_context,
+        |mut product| {
+            // FIXME implement atomic instructions in Cranelift.
+            if let Some(func_id) = init_atomics_mutex_from_constructor {
+                product.add_constructor(func_id);
+            }
+
+            product
+        }
     )
 }
 
@@ -190,6 +243,7 @@ pub(super) fn run_aot(
             allocator_module,
             None,
             allocator_unwind_context,
+            |product| product,
         );
         if let Some((id, product)) = work_product {
             work_products.insert(id, product);
