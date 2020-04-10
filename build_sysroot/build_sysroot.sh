@@ -21,7 +21,7 @@ if [[ "$1" == "--release" ]]; then
     RUSTFLAGS="$RUSTFLAGS -Zmir-opt-level=2" cargo build --target $TARGET_TRIPLE --release
 else
     sysroot_channel='debug'
-    cargo build --target $TARGET_TRIPLE
+    RUSTFLAGS="$RUSTFLAGS -Csave-temps" cargo build --target $TARGET_TRIPLE
 fi
 
 # Copy files to sysroot
