@@ -101,7 +101,7 @@ pub(crate) fn trans_constant<'tcx>(
         }
         ConstKind::Value(const_val) => const_val,
         ConstKind::Param(_) | ConstKind::Infer(_) | ConstKind::Bound(_, _)
-        | ConstKind::Placeholder(_) | ConstKind::Error => unreachable!("{:?}", const_),
+        | ConstKind::Placeholder(_) | ConstKind::Error(_) => unreachable!("{:?}", const_),
     };
 
     trans_const_value(fx, const_val, const_.ty)
