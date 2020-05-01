@@ -104,9 +104,9 @@ fn main() {
     let kind = Nums::NegOne;
     assert_eq!(-1i128, kind as i128);
 
-    /*if u8::shl(1, 9) != 2_u8 {
+    if u8::shl(1, 9) != 2_u8 {
         unsafe { std::intrinsics::abort(); }
-    }*/
+    }
 
     /*const STR: &'static str = "hello";
     fn other_casts() -> *const str {
