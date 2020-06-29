@@ -336,6 +336,10 @@ impl<T: ?Sized> PartialEq for *const T {
     }
 }
 
+pub fn is_true(a: bool) -> u8 {
+    if a { 1 } else { 0 }
+}
+
 #[lang = "neg"]
 pub trait Neg {
     type Output;
