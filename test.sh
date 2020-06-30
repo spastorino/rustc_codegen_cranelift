@@ -73,8 +73,8 @@ $RUSTC example/mod_bench.rs --crate-type bin --target $TARGET_TRIPLE
 
 git clone https://github.com/rust-lang/rust.git --single-branch || true
 cd rust
-#git fetch
-#git checkout -f $(rustc -V | cut -d' ' -f3 | tr -d '(')
+git fetch
+git checkout -f $(rustc -V | cut -d' ' -f3 | tr -d '(')
 export RUSTFLAGS=
 export CG_CLIF_DISPLAY_CG_TIME=
 
