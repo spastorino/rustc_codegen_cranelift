@@ -91,6 +91,8 @@ local-rebuild = true
 rustc = "$HOME/.rustup/toolchains/$(cat ../rust-toolchain)-$TARGET_TRIPLE/bin/rustc"
 EOF
 
+cargo install ripgrep
+
 git checkout $(rustc -V | cut -d' ' -f3 | tr -d '(') src/test
 rm -r src/test/ui/{asm-*,abi*,derives/,extern/,panic-runtime/,panics/,unsized-locals/,proc-macro/,thinlto/,simd*,borrowck/,test*,*lto*.rs,linkage*,unwind-*.rs,*macro*.rs,duplicate/,symbol-names/} || true
 for test in $(rg --files-with-matches "asm!|catch_unwind|should_panic|lto" src/test/ui); do
